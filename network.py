@@ -35,17 +35,17 @@ class Network(object):
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.biases = [np.random.randn(y, 1) for y in sizes[1:]]
-        self.weights = [np.random.randn(y, x)
-                        for x, y in zip(sizes[:-1], sizes[1:])]
+        self.weights = [np.random.randn(y, x) for x, y in zip(sizes[:-1], sizes[1:])]
+        self.cost = SoftmaxCrossEntropyCost
 
     def feedforward(self, a):
-        """Return the output of the network if ``a`` is input."""
-        for b, w in zip(self.biases, self.weights):
-            a = sigmoid(np.dot(w, a)+b)
+        """Todas las capas ocultas usan sigmoide, la última usa softmax."""
+        for b, w in zip(self.biases[:-1], self.weights[:-1]):
+            a = sigmoid(np.dot(w, a) + b)
+        a = softmax(np.dot(self.weights[-1], a) + self.biases[-1])
         return a
 
-    def SGD(self, training_data, epochs, mini_batch_size, eta,
-            test_data=None):
+    def SGD(self, training_data, epochs, mini_batch_size, eta, test_data=None):
         """Train the neural network using mini-batch stochastic
         gradient descent.  The ``training_data`` is a list of tuples
         ``(x, y)`` representing the training inputs and the desired
@@ -54,7 +54,6 @@ class Network(object):
         network will be evaluated against the test data after each
         epoch, and partial progress printed out.  This is useful for
         tracking progress, but slows things down substantially."""
-
         training_data = list(training_data)
         n = len(training_data)
 
@@ -70,9 +69,10 @@ class Network(object):
             for mini_batch in mini_batches:
                 self.update_mini_batch(mini_batch, eta)
             if test_data:
-                print("Epoch {} : {} / {}".format(j,self.evaluate(test_data),n_test))
+                print(f"Epoch {j} : {self.evaluate(test_data)} / {n_test}")
             else:
-                print("Epoch {} complete".format(j))
+                print(f"Epoch {j} complete")
+
 
     def update_mini_batch(self, mini_batch, eta):
         """Update the network's weights and biases by applying
@@ -107,8 +107,8 @@ class Network(object):
             activation = sigmoid(z)
             activations.append(activation)
         # backward pass
-        delta = self.cost_derivative(activations[-1], y) * \
-            sigmoid_prime(zs[-1])
+        delta = self.cost.delta(zs[-1], activations[-1], y)  # usa el delta de Softmax   
+
         nabla_b[-1] = delta
         nabla_w[-1] = np.dot(delta, activations[-2].transpose())
         # Note that the variable l in the loop below is used a little
@@ -147,3 +147,17 @@ def sigmoid(z):
 def sigmoid_prime(z):
     """Derivative of the sigmoid function."""
     return sigmoid(z)*(1-sigmoid(z))
+
+### Función de costo Cross-Entropy (Softmax), definida como en la clase
+def softmax(z):
+    e_z = np.exp(z - np.max(z))   # resta max(z) para evitar overflow
+    return e_z / np.sum(e_z)
+
+class SoftmaxCrossEntropyCost(object):
+    def fn(a, y):
+        """Usamos la activación de la capa Softmax con una función de costo Cross Entropy."""
+        return -np.sum(y * np.log(a + 1e-9))  # 1e-9 evita log(0)
+
+    def delta(z,a,y):
+        """El gradiente simplemente se obtiene con a-y, no depende de la función sigmoide primada y por lo tanto, se evitan gradientes pequeños (se aprende más rápido"""
+        return (a-y) 
