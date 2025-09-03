@@ -35,7 +35,10 @@ class Network(object):
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.biases = [np.random.randn(y, 1) for y in sizes[1:]]
-        self.weights = [np.random.randn(y, x) for x, y in zip(sizes[:-1], sizes[1:])]
+        # Mejora de inicialización de pesos, la varianza es proporcional al inverso de la raíz del número de neuronas de entrada, evita la saturación continua de neuronas.
+        self.weights = [np.random.randn(y, x) / np.sqrt(x) 
+                        for x, y in zip(sizes[:-1], sizes[1:])] 
+        
         self.cost = SoftmaxCrossEntropyCost
 
     def feedforward(self, a):
