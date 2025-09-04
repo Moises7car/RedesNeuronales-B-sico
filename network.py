@@ -40,7 +40,16 @@ class Network(object):
                         for x, y in zip(sizes[:-1], sizes[1:])] 
         
         self.cost = SoftmaxCrossEntropyCost
+        
+        # Inicialización de momentos para Adam. Creamos para cada matriz de pesos y de bias dos matrices del mismo tamaño pero de ceros, se van a almacenar los primeros y segundos momentos que se vayan actualizando.
+        
+        self.m_w = [np.zeros_like(w) for w in self.weights]
+        self.R_w = [np.zeros_like(w) for w in self.weights]
+        self.m_b = [np.zeros_like(b) for b in self.biases]
+        self.R_b = [np.zeros_like(b) for b in self.biases]
+        self.t = 0  # contador de pasos de Adam
 
+         
     def feedforward(self, a):
         """Todas las capas ocultas usan sigmoide, la última usa softmax."""
         for b, w in zip(self.biases[:-1], self.weights[:-1]):
@@ -77,21 +86,44 @@ class Network(object):
                 print(f"Epoch {j} complete")
 
 
-    def update_mini_batch(self, mini_batch, eta):
-        """Update the network's weights and biases by applying
-        gradient descent using backpropagation to a single mini batch.
-        The ``mini_batch`` is a list of tuples ``(x, y)``, and ``eta``
-        is the learning rate."""
+    def update_mini_batch(self, mini_batch, eta, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        #Actualiza pesos y bias usanso Adam. Tomamos los valores recomendados para beta 1 y beta 2 vistos en clase.
         nabla_b = [np.zeros(b.shape) for b in self.biases]
         nabla_w = [np.zeros(w.shape) for w in self.weights]
         for x, y in mini_batch:
             delta_nabla_b, delta_nabla_w = self.backprop(x, y)
             nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
-            nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
-        self.weights = [w-(eta/len(mini_batch))*nw
-                        for w, nw in zip(self.weights, nabla_w)]
-        self.biases = [b-(eta/len(mini_batch))*nb
-                       for b, nb in zip(self.biases, nabla_b)]
+            nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]  
+
+        #tomamos el promedio de gradientes en el mini batch
+        nabla_b = [nb / len(mini_batch) for nb in nabla_b]
+        nabla_w = [nw / len(mini_batch) for nw in nabla_w]
+        self.t += 1  #incrementamos cada paso 1 a 1.
+        
+        for i in range(len(self.weights)):
+            # Momentum para pesos (m), definición vista en clase.
+            self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * (nabla_w[i])
+            # RMS para pesos (R)
+            self.R_w[i] = beta2 * self.R_w[i] + (1 - beta2) * (nabla_w[i]**2)
+            
+            # corrección por sesgo 
+            m_w_hat = self.m_w[i] / (1-beta1**self.t)
+            r_w_hat = self.R_w[i] / (1-beta2**self.t)
+            
+            # Actualización de pesos con las variables definidas (fórmula vista en clase)
+            self.weights[i] -= eta*m_w_hat / (np.sqrt(r_w_hat) + epsilon)
+
+            # Repetimos el procedimiento pero para los bías, es decir, combinamos momentum y RMSprop para definir la actualización de bias con las mismas fórmulas.
+
+            self.m_b[i] = beta1 * self.m_b[i] + (1 - beta1) * nabla_b[i]
+            self.R_b[i] = beta2 * self.R_b[i] + (1 - beta2) * (nabla_b[i]**2)
+
+            m_b_hat = self.m_b[i] / (1 - beta1**self.t)
+            r_b_hat = self.R_b[i] / (1 - beta2**self.t)
+
+            # Paso de actualización de bias
+            self.biases[i] -= eta * m_b_hat / (np.sqrt(r_b_hat) + epsilon)
+
 
     def backprop(self, x, y):
         """Return a tuple ``(nabla_b, nabla_w)`` representing the
@@ -104,11 +136,15 @@ class Network(object):
         activation = x
         activations = [x] # list to store all the activations, layer by layer
         zs = [] # list to store all the z vectors, layer by layer
-        for b, w in zip(self.biases, self.weights):
+        for b, w in zip(self.biases[:-1], self.weights[:-1]):
             z = np.dot(w, activation)+b
             zs.append(z)
             activation = sigmoid(z)
             activations.append(activation)
+        z= np.dot(self.weights[-1], activation) + self.biases[-1]
+        zs.append(z)
+        activation = softmax(z)
+        activations.append(activation)
         # backward pass
         delta = self.cost.delta(zs[-1], activations[-1], y)  # usa el delta de Softmax   
 
